@@ -15,15 +15,18 @@ raw_test <- read.csv("C:\\Users\\sheli\\OneDrive\\Documents\\DA Practice GitHub\
 ## 0.2 raw_test notes ####
   ### full names + title in name, "Survived" removed, missing ages, some decimal ages, 
 
-# 1 Cleaning ####
+# 1 Cleaning & Exploring ####
 cl_train <- clean_names(raw_train)
 
 ## summary stats
 head(cl_train)
 summary(cl_train)
+
 ## 177 missing ages; 80%/ 714 data points remaining if removed
-## change fare to xx.x
+## change fare to xx.x ??
 ## columns to remove: name, ticket #, cabin, age (replaced w/ age_months), sib_sp & parch (replaced with family size/ traveling alone)
+
+summary(cl_train$embarked) # 2 NAs
 
 cl_train <- cl_train %>%
   mutate(
@@ -50,6 +53,7 @@ write.csv(cl_train, "C:\\Users\\sheli\\OneDrive\\Documents\\DA Practice GitHub\\
   ### make fare categories (?): 
   ### regression: age + gender/ survival, age + class/survival, gender +class/ survival, age + gender + class/ survival
 
+## 2.1 Descriptive Stats ####
 ## age groups
 cl_train <- cl_train %>% 
   mutate(
@@ -62,7 +66,100 @@ cl_train <- cl_train %>%
       age_months > 900 ~ "elder"
     )
   )
-## 2.1 t-tests ####
+
+# Basic survival rate
+overall_survival <- cl_train %>%
+  summarise(
+    total = n(),
+    survived = sum(survived, na.rm = TRUE),
+    survival_rate = round(survived/total * 100, 1)
+  )
+
+# Passenger class
+survival_by_class <- cl_train %>%
+  group_by(pclass) %>%
+  summarise(
+    total = n(),
+    survived = sum(survived, na.rm = TRUE),
+    survival_rate = round(survived/total * 100, 1),
+    .groups = 'drop'
+  )
+
+# Sex
+survival_by_sex <- cl_train %>%
+  group_by(sex) %>%
+  summarise(
+    total = n(),
+    survived = sum(survived, na.rm = TRUE),
+    survival_rate = round(survived/total * 100, 1),
+    .groups = 'drop'
+  )
+
+# Age group (excluding NAs)
+survival_by_age <- cl_train %>%
+  filter(!is.na(age_group)) %>%
+  group_by(age_group) %>%
+  summarise(
+    total = n(),
+    survived = sum(survived, na.rm = TRUE),
+    survival_rate = round(survived/total * 100, 1),
+    .groups = 'drop'
+  ) %>%
+  arrange(desc(survival_rate))
+
+# Family size categories
+survival_by_family <- cl_train %>%
+  group_by(family_category) %>%
+  summarise(
+    total = n(),
+    survived = sum(survived, na.rm = TRUE),
+    survival_rate = round(survived/total * 100, 1),
+    .groups = 'drop'
+  ) %>%
+  arrange(desc(survival_rate))
+
+# Cross-tabulations interaction effects
+# Class + Sex (the big story)
+survival_class_sex <- cl_train %>%
+  group_by(pclass, sex) %>%
+  summarise(
+    total = n(),
+    survived = sum(survived, na.rm = TRUE),
+    survival_rate = round(survived/total * 100, 1),
+    .groups = 'drop'
+  ) %>%
+  arrange(pclass, desc(survival_rate))
+
+# Age group + Sex
+survival_age_sex <- cl_train %>%
+  filter(!is.na(age_group)) %>%
+  group_by(age_group, sex) %>%
+  summarise(
+    total = n(),
+    survived = sum(survived, na.rm = TRUE),
+    survival_rate = round(survived/total * 100, 1),
+    .groups = 'drop'
+  ) %>%
+  arrange(age_group, desc(survival_rate))
+
+# Results
+overall_survival
+survival_by_class
+survival_by_sex
+survival_by_age
+survival_by_family
+survival_class_sex
+survival_age_sex
+
+### 2.1.1 Interpretations ####
+# 1. Overall survival: ~38%
+# 2. Class matters: 1st class >> 2nd class > 3rd class  
+# 3. Sex dominates: Women ~74% vs Men ~19%
+# 4. Children had higher survival than adults
+# 5. Small families did better than large families or solo travelers
+# 6. The interaction between class and sex shows the strongest pattern
+
+## 2.2 t-tests ####
 ### survival/ gender, minor, traveling_alone
 
 gender_survival_test <- t.test(survived ~ sex, data = cl_train)
@@ -102,7 +199,7 @@ traveling_alone_test_results <- list(
   ci_upper = traveling_alone_survival_test$conf.int[2]
 )
 
-## 2.2 ANOVA tests ####
+## 2.3 ANOVA tests ####
 ### survival/ class, embarked, family size
 
 class_survival_anova <- aov(survived ~ pclass, data = cl_train)
@@ -129,18 +226,6 @@ embarked_test_results <- list(
   sum_sq = embarked_summary[[1]][["Sum Sq"]]
 )
 
-family_category_anova <- aov(survived ~ family_category, data = cl_train)
-family_category_summary <- summary(family_category_anova)
-
-family_category_test_results <- list(
-  test_type = "ANOVA",
-  variables = "survived ~ family_category", 
-  f_statistic = family_category_summary[[1]][["F value"]][1],
-  p_value = family_category_summary[[1]][["Pr(>F)"]][1],
-  df = family_category_summary[[1]][["Df"]],
-  sum_sq = family_category_summary[[1]][["Sum Sq"]]
-)
-
 age_group_survival_anova <- aov(survived ~ age_group, data = cl_train)
 age_group_summary <- summary(age_group_survival_anova)
 
@@ -153,7 +238,7 @@ age_group_test_results <- list(
   sum_sq = age_group_summary[[1]][["Sum Sq"]]
 )
 
-## 2.3 Test Results ####
+## 2.4 Test Results ####
 ### all tests results 
 all_survival_test_results <- data.frame(
   Test = c("Gender", "Minor Status", "Traveling Alone", "Class", "Embarked", "Family Size", "Age Group"),
@@ -191,7 +276,7 @@ all_survival_test_results <- data.frame(
 all_survival_test_results$P_Value <- ifelse(all_survival_test_results$P_Value < 0.001, "<0.001", 
                                   round(all_survival_test_results$P_Value, 4))
 
-## 2.4 Interpretations ####
+## 2.5 Interpretations ####
 
 ## family size wasn't significant; gonna try family categories
 
@@ -268,7 +353,9 @@ cl_train <- cl_train %>%
     sex = as.factor(sex),
     embarked = as.factor(embarked),
     age_group = as.factor(age_group),
+    pclass = as.factor(pclass),
     family_category = as.factor(family_category),
+    traveling_alone = as.factor(traveling_alone),
     # interaction vars
     age_class = interaction(age_group, pclass),
     age_sex = interaction(age_group, sex),
@@ -276,14 +363,170 @@ cl_train <- cl_train %>%
     age_class_sex = interaction(age_group, pclass, sex),
     age_travel = interaction(age_group, traveling_alone),
     minor_sex = interaction(minor, sex),
-    minor_class = interaction(minor, pclass)
+    minor_class = interaction(minor, pclass),
+    minor_class = interaction(minor,sex,pclass)
 )
 
+head(cl_train)
+summary(cl_train)
+
 # 4 Modeling ####
-## simple log regressions, interactions log regressions, RF,
+## simple log regression (4.2), interactions log regressions (4.4), RF (4.6), GBM(4.8)
 
 ## 4.1 Simple Logistic Regression ####
-simple_model <- glm(survived ~ sex + minor + traveling_alone + pclass + embarked + age_group, 
-              family = binomial, data = cl_train)
+# simple_model <- glm(survived ~ sex + minor + traveling_alone + pclass + embarked + age_group, 
+#               family = binomial, data = cl_train)
+# 
+# summary(simple_model)
 
-summary(simple_model)
+### 4.1.1 Simple Model Eval ####
+# simple_predictions <- predict(simple_model, type = "response")
+# simple_auc <- auc(simple_model$y, simple_predictions)  # 177 age/agre_group NAs; model$y contains the actual outcomes used
+# simple_predicted_class <- ifelse(simple_predictions > 0.5, 1, 0)
+# simple_confusion <- table(Predicted = simple_predicted_class, Actual = simple_model$y)
+# simple_accuracy <- mean(simple_predicted_class == simple_model$y)
+# simple_aic <- AIC(simple_model)
+# # rm(simple_predictions, simple_auc, simple_predicted_class, simple_confusion, simple_accuracy, simple_aic)
+
+# ## 4.1.2 Simple Model Plot
+# # DF
+# simple_model_data <- tidy(simple_model, conf.int = TRUE)
+# rm(simple_model_data)
+# 
+# # Plot
+# simple_model_plot <- ggplot(simple_model_data, aes(x = estimate, y = term)) +
+#   geom_point() +
+#   geom_errorbarh(aes(xmin = conf.low, xmax = conf.high)) +
+#   geom_vline(xintercept = 0, linetype = "dashed") +
+#   labs(title = "Simple Model Coefficients", 
+#        x = "Coefficient Estimate", 
+#        y = "Variables")
+# 
+# # Plot Save
+# ggsave("C:\\Users\\sheli\\OneDrive\\Documents\\DA Practice GitHub\\Titanic\\outputs\\plots\\simple_model_plot.png", 
+#        plot = simple_model_plot, width = 8, height = 6)
+# rm(simple_model_plot)
+
+## 4.2 Cleaned Simple  Logistic Regression ####
+### excluding minor due to minor/age_group multicollinearity
+### excluding embarked due to 2 missing values causing perfect separation issues
+
+### 4.2.1 Cleaned Simple Model ####
+clean_simple_model <- glm(survived ~ sex + age_group + pclass + traveling_alone, 
+                   family = binomial, data = cl_train)
+
+summary(clean_simple_model)
+
+### 4.2.1 Simple Model Eval ####
+simple_predictions <- predict(clean_simple_model, type = "response")
+simple_auc <- auc(clean_simple_model$y, simple_predictions)  # 177 age/agre_group NAs; model$y contains the actual outcomes used
+simple_predicted_class <- ifelse(simple_predictions > 0.5, 1, 0)
+simple_confusion <- table(Predicted = simple_predicted_class, Actual = clean_simple_model$y)
+simple_accuracy <- mean(simple_predicted_class == clean_simple_model$y)
+simple_aic <- AIC(clean_simple_model)
+
+## 4.2.2 Clean Simple Model Plot
+# DF
+clean_simple_model_data <- tidy(clean_simple_model, conf.int = TRUE)
+
+table(cl_train$survived, cl_train$age_group)
+
+# Plot
+clean_simple_model_plot <- ggplot(clean_simple_model_data, aes(x = estimate, y = term)) +
+  geom_point() +
+  geom_errorbarh(aes(xmin = conf.low, xmax = conf.high)) +
+  geom_vline(xintercept = 0, linetype = "dashed") +
+  labs(title = "Simple Model Coefficients", 
+       x = "Coefficient Estimate", 
+       y = "Variables")
+
+print(clean_simple_model_plot)
+
+# Plot Save
+ggsave("C:\\Users\\sheli\\OneDrive\\Documents\\DA Practice GitHub\\Titanic\\outputs\\plots\\simple_model_plot.png", 
+       plot = clean_simple_model_plot, width = 8, height = 6)
+
+## 4.3 Simple Model Interpretations ####
+## may need to create simple age grouping category: minor vs adult; currently like the breakout of age groups
+
+## 4.4 Interactions Logistic Regression ####
+### current interactions: ####
+# cl_train <- cl_train %>%
+# mutate(
+#   sex = as.factor(sex),
+#   embarked = as.factor(embarked),
+#   age_group = as.factor(age_group),
+#   family_category = as.factor(family_category),
+#   # interaction vars
+#   age_class = interaction(age_group, pclass),
+#   age_sex = interaction(age_group, sex),
+#   class_sex = interaction(pclass, sex),
+#   age_class_sex = interaction(age_group, pclass, sex),
+#   age_travel = interaction(age_group, traveling_alone),
+#   minor_sex = interaction(minor, sex),
+#   minor_class = interaction(minor, pclass),
+#   minor_sex_class = interaction(minor,sex,pclass)
+
+## gonna exclude minor as age_group captures minor status
+
+## adding traveling_alone interactions
+cl_train <- cl_train %>% 
+  mutate(
+    sex_travel = interaction(sex, traveling_alone),
+    class_travel = interaction(pclass, traveling_alone)
+)
+
+### 4.3.1 Interactions Log Regression ####
+## gonna exclude minor interactions as age_group captures minor status
+interaction_model <- glm(survived ~ 
+  sex + pclass + age_group + traveling_alone + age_sex + age_class + age_class_sex + class_sex + sex_travel + class_travel + age_travel,
+                    family = binomial, data = cl_train)
+
+### 4.3.2 Interactions Log Model Eval ####
+interaction_predictions <- predict(interaction_model, type = "response")
+interaction_auc <- auc(interaction_model$y, interaction_predictions)
+interaction_predicted_class <- ifelse(interaction_predictions > 0.5, 1, 0)
+interaction_confusion <- table(Predicted = interaction_predicted_class, Actual = interaction_model$y)
+interaction_accuracy <- mean(interaction_predicted_class == interaction_model$y)
+interaction_aic <- AIC(interaction_model)
+
+### 4.3.3 Interactions Log Plot
+interaction_model_data <- tidy(interaction_model, conf.int = TRUE)
+
+interaction_model_plot <- ggplot(interaction_model_data, aes(x = estimate, y = term)) +
+  geom_point() + geom_errorbarh(aes(xmin = conf.low, xmax = conf.high)) +
+  geom_vline(xintercept = 0, linetype = "dashed") +
+  labs(title = "Interaction Model Coefficients")
+
+ggsave("outputs/plots/interaction_model_plot.png", plot = interaction_model_plot)
+
+## 4.5 Interactions Interpretations ####
+### warnings: Warning messages:
+  #1: glm.fit: algorithm did not converge 
+  #2: glm.fit: fitted probabilities numerically 0 or 1 occurred #
+## gonna use more simple/basc interactions: age/sex/class
+
+### 4.5.1 Simple Interactions Log Model ####
+simple_interaction_model <- glm(survived ~ 
+                           sex + pclass + age_group + traveling_alone + age_sex + age_class + class_sex,
+                           family = binomial, data = cl_train)
+
+### 4.5.2 Simple Interactions Log Model Eval ####
+simple_interaction_predictions <- predict(simple_interaction_model, type = "response")
+simple_interaction_auc <- auc(simple_interaction_model$y, simple_interaction_predictions)
+simple_interaction_predicted_class <- ifelse(simple_interaction_predictions > 0.5, 1, 0)
+simple_interaction_confusion <- table(Predicted = simple_interaction_predicted_class, Actual = simple_interaction_model$y)
+simple_interaction_accuracy <- mean(simple_interaction_predicted_class == simple_interaction_model$y)
+simple_interaction_aic <- AIC(simple_interaction_model)
+
+### 4.3.3 Simple Interactions Log Plot
+simple_interaction_model_data <- tidy(simple_interaction_model, conf.int = TRUE)
+
+simple_interaction_model_plot <- ggplot(simple_interaction_model_data, aes(x = estimate, y = term)) +
+  geom_point() + geom_errorbarh(aes(xmin = conf.low, xmax = conf.high)) +
+  geom_vline(xintercept = 0, linetype = "dashed") +
+  labs(title = "Interaction Model Coefficients")
+
+ggsave("outputs/plots/simple_interaction_model_plot.png", plot = simple_interaction_model_plot)
+
+
